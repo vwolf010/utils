@@ -6,11 +6,11 @@ public class OneAtATimeHash {
     byte b[];
     int hash; // defaults to 0
 
-    OneAtATimeHash(byte b[]) {
+    public OneAtATimeHash(byte b[]) {
         this.b = b;
     }
 
-    OneAtATimeHash set(byte b[]) {
+    public OneAtATimeHash set(byte b[]) {
         this.b = b;
         hash=0;
         return this;
@@ -30,7 +30,7 @@ public class OneAtATimeHash {
         return hash;
     }
 
-    static int calcHash(byte key[]) {
+    public static int calcHash(byte key[]) {
         int hash = 0;
 
         for (byte b : key) {
