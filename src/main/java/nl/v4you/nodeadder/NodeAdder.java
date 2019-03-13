@@ -14,6 +14,7 @@ import org.w3c.dom.Node;
  * $Id$
  */
 public class NodeAdder {
+
     final static int MAX_NODES = 50;
     final static String EMPTY_STRING_MSG = "Empty string not allowed";
 
@@ -105,6 +106,11 @@ public class NodeAdder {
         return this;
     }
 
+    public NodeAdder node(Node newNode) {
+        nodes[idx].appendChild(doc.adoptNode(newNode));
+        return this;
+    }
+
     public NodeAdder end() throws NodeAdderException {
         idx--;
         if (idx<0) {
@@ -144,7 +150,7 @@ public class NodeAdder {
         }
         return this;
     }
-
+    
     public NodeAdder val(String value) throws NodeAdderException {
         if (idx<0)
             throw new NodeAdderException("Root node not set");
