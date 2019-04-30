@@ -3,8 +3,8 @@ package nl.v4you.hash;
 import java.util.Arrays;
 
 public class OneAtATimeHash {
-    byte b[];
-    int hash; // defaults to 0
+    private byte b[];
+    private int hash; // defaults to 0
 
     public OneAtATimeHash(byte b[]) {
         this.b = b;
@@ -43,5 +43,11 @@ public class OneAtATimeHash {
         hash ^= (hash >>> 11);
         hash += (hash << 15);
         return hash;
+    }
+
+    public OneAtATimeHash clone() {
+        OneAtATimeHash o = new OneAtATimeHash(Arrays.copyOf(b, b.length));
+        o.hash = hash;
+        return o;
     }
 }
