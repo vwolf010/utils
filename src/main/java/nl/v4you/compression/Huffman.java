@@ -91,14 +91,15 @@ public class Huffman {
     }
 
     private long readSize() {
+        int shift=0;
         int L=0;
         int i=encodedBuf[encodedSize++] & 0xFF;
         while ((i&0x80)!=0) {
-            L|=i&0x7F;
-            L<<=7;
+            L|=(i&0x7F)<<shift;
+            shift += 7;
             i=encodedBuf[encodedSize++] & 0xFF;
         }
-        return L | i;
+        return L | (i<<shift);
     }
 
     private long readBits(int L) {
@@ -364,12 +365,13 @@ public class Huffman {
         listCodes();
 
         int predict[] = new int[4];
+        int maxCodeBitLen = bits(maxCodeLen-1);
 
-        predict[PREDICT_UNCOMPRESSED] = 8 + 8 * inSize;
-        predict[PREDICT_FULL_TABLE] = 8 + 8 + bits(maxCodeLen-1) * 256;
-        predict[PREDICT_ASCII_TABLE] = 8 + 8 + bits(maxCodeLen-1) * (isAscii ? 98 : 999);
+        predict[PREDICT_UNCOMPRESSED] = 8 * inSize;
+        predict[PREDICT_FULL_TABLE] = 8 + maxCodeBitLen * 256;
+        predict[PREDICT_ASCII_TABLE] = 8 + maxCodeBitLen * (isAscii ? 98 : 999);
         int partialTableLength = getTableLength();
-        predict[PREDICT_PARTIAL_TABLE] = 8 + 8 + bits(maxCodeLen-1) * partialTableLength;
+        predict[PREDICT_PARTIAL_TABLE] = 8 + 8 + 8 * partialTableLength + maxCodeBitLen * unique;
         int encodedDataBits = 0;
         for (int i=0; i<256; i++) {
             if (freq[i]!=0) {
@@ -399,13 +401,13 @@ public class Huffman {
             encodedSize =0;
             writeBits(PREDICT_ASCII_TABLE, 8);
             writeSize(inSize);
-            writeBits(maxCodeLen, 8);
-            int nrOfBits = bits(maxCodeLen);
-            writeBits(codeLen[0x9], nrOfBits);
-            writeBits(codeLen[0xa], nrOfBits);
-            writeBits(codeLen[0xd], nrOfBits);
+            writeBits(maxCodeLen-1, 8);
+            int nrOfBits = bits(maxCodeLen-1);
+            writeBits(codeLen[0x9]-1, nrOfBits);
+            writeBits(codeLen[0xa]-1, nrOfBits);
+            writeBits(codeLen[0xd]-1, nrOfBits);
             for (int i=0x20; i<0x80; i++) {
-                writeBits(codeLen[i], nrOfBits);
+                writeBits(codeLen[i]-1, nrOfBits);
             }
             compressInput(a);
         }
@@ -413,10 +415,10 @@ public class Huffman {
             encodedSize =0;
             writeBits(PREDICT_FULL_TABLE, 8);
             writeSize(inSize);
-            writeBits(maxCodeLen, 8);
-            int nrOfBits = bits(maxCodeLen);
+            writeBits(maxCodeLen-1, 8);
+            int nrOfBits = bits(maxCodeLen-1);
             for (int i=0; i<0x100; i++) {
-                writeBits(codeLen[i], nrOfBits);
+                writeBits(codeLen[i]-1, nrOfBits);
             }
             compressInput(a);
         }
@@ -424,15 +426,15 @@ public class Huffman {
             encodedSize =0;
             writeBits(PREDICT_PARTIAL_TABLE, 8);
             writeSize(inSize);
-            writeBits(maxCodeLen, 8);
-            int nrOfBits = bits(maxCodeLen);
+            writeBits(maxCodeLen-1, 8);
+            int nrOfBits = bits(maxCodeLen-1);
             byte T[] = getTable(partialTableLength);
             for (int i=0; i<partialTableLength; i++) {
                 writeBits(T[i], 8);
             }
             for (int i=0; i<0x100; i++) {
                 if (freq[i]>0) {
-                    writeBits(codeLen[i], nrOfBits);
+                    writeBits(codeLen[i]-1, nrOfBits);
                 }
             }
             compressInput(a);
@@ -447,10 +449,6 @@ public class Huffman {
     }
 
     public void decode() throws CompressionException {
-        if (decodedSize<inSize) {
-            decodedSize=inSize;
-            decodedBuf =new byte[decodedSize];
-        }
         reset();
         long tmp = readBits(8);
         int version = (int)(tmp & 0b11111000);
@@ -459,12 +457,30 @@ public class Huffman {
         }
         int type = (int)(tmp & 0b111);
         long size = readSize();
+        if (size>decodedBuf.length) {
+            decodedBuf =new byte[(int)size];
+        }
         if (type==PREDICT_UNCOMPRESSED) {
             for (int i=0; i<size; i++) {
                 decodedBuf[i] = (byte)readBits(8);
             }
         }
         else if (type==PREDICT_ASCII_TABLE){
+            maxCodeLen = (int)readBits(8)+1;
+            int nrOfBits = bits(maxCodeLen-1);
+            minCodeLen = Integer.MAX_VALUE;
+            Arrays.fill(codeLen, 0);
+            codeLen[0x9] = (int)readBits(nrOfBits);
+            if (codeLen[0x9]<minCodeLen) minCodeLen = codeLen[0x9];
+            codeLen[0xA] = (int)readBits(nrOfBits);
+            if (codeLen[0xA]<minCodeLen) minCodeLen = codeLen[0xA];
+            codeLen[0xD] = (int)readBits(nrOfBits);
+            if (codeLen[0xD]<minCodeLen) minCodeLen = codeLen[0xD];
+            for (int n=0x20; n<0x7F; n++) {
+                codeLen[n]=(int)readBits(nrOfBits);
+                if (codeLen[n]<minCodeLen) minCodeLen = codeLen[n];
+            }
+            assignCanonicalCodes();
             for (int i=0; i<size; i++) {
                 long code = readBits(minCodeLen);
                 int cl = minCodeLen;
@@ -481,6 +497,7 @@ public class Huffman {
                     cl++;
                 }
             }
+            decodedSize=(int)size;
         }
     }
 
