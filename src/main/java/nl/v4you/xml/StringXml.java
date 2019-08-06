@@ -66,7 +66,7 @@ public class StringXml {
         char arr[] = str.toCharArray();
         for (int i=0; i<arr.length; i++) {
             char ch = arr[i];
-            if (ch>=0x20 || ch<=0x7E) {
+            if (ch>=0x20 && ch<=0x7E) {
                 if (ch=='&') sb = addEntity(sb, arr, i, "&amp;"); // encode &amp; first!!!
                 else if (ch=='<') sb = addEntity(sb, arr, i, "&lt;");
                 else if (ch=='>') sb = addEntity(sb, arr, i, "&gt;");
@@ -82,7 +82,7 @@ public class StringXml {
                 sb = addEntity(sb, arr, i, "&#x" + Integer.toString(Character.codePointAt(arr, i), 16) + ";");
                 i++;
             }
-            else if (ch>0x7F) addEntity(sb, arr, i, "&#x" + Integer.toString(ch, 16) + ";");
+            else if (ch>0x7F) sb = addEntity(sb, arr, i, "&#x" + Integer.toString(ch, 16) + ";");
             else {
                 throw new StringXmlException("Illegal character detected! "+ch);
             }
