@@ -1,56 +1,44 @@
 package nl.v4you.compression;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.util.Arrays;
 
-// <version+type> <length> [partial selection] [length table(full or partial)] <data>
+// <version+type> [UNQ] [uncompressed_length] [partial selection] [length table(full or partial)] <data>
 
-// todo: number_of_bits(maximal length - minimal length) = maximum bits that need to be used
+// byte 0 = version (4 bits, 0b1111=reserved) + type (4 bits)
 
-// byte 0 = version (5 bits, 0b11111=reserved) + type (3 bits)
+// 0 : uncompressed (uncompressed_length + data)
+// 1 : UNQ=1 (uncompressed_length + byte value(1 byte))
+// 2 : compressed (uncompressed_length + UNQ (1 byte) + partial_table (if UNQ<256) + code_length_table + data)
+// 3 : reserved
+// 4 : reserved
+// 5 : reserved
+// 6 : reserved
 
-// 0 = uncompressed
-// 1 = compressed with ascii table (98 entries: tab/lf/cr/space until tilde
-// 2 = compressed with full table (256 entries)
-// 3 = compressed with partial table
-// 4 = reserved
-// 5 = reserved
-// 6 = reserved
-// 7 = reserved
-
-// when type=1, 1 byte for max length + 98 length bytes follow
-// when type=2: 1 byte for max length + 256 length bytes for codes
-// when type=3, 3 bits for min length, 1 byte for max length, partial table follows (for ascii: space-tilde,cr,lf,tab)
-
-// length table: 1 byte for the number of entries, 3 bits for the minimum length (to support 1-8), 1 byte for the maximum length, then the table itself
 // partial table: byte values are written from high to low, except for ranges that are denoted low-high: "d","a" denotes 2 values, "a","d" denotes the range "a"-"d"
-//                because bytes are written high to low, towards the end less bits are needed to write the values
-//
-// Special cases:
-// <version+type=d/c> <length=0> : input was 0 bytes
-// <version+type=3> <length=X> <partial_table_length=1> <char> : input is X times <char>
+//                TODO: because bytes are written high to low, towards the end less bits are needed to write the values
+
+// length table: 1 byte for the maximum length, 3 bits for the minimum length (to support 1-8), then the table itself (UNQ entries)
 
 public class Huffman {
-    private static int PREDICT_SIZE = 4;
+    private static int PREDICT_SIZE = 2;
     private static int PREDICT_UNCOMPRESSED = 0;
-    private static int PREDICT_ASCII_TABLE = 1;
-    private static int PREDICT_FULL_TABLE = 2;
-    private static int PREDICT_PARTIAL_TABLE = 3;
+    private static int PREDICT_PARTIAL_TABLE = 1;
+
+    private static int MODE_UNCOMPRESSED = 0;
+    private static int MODE_UNQ_EQ_1 = 1;
+    private static int MODE_COMPRESSED = 2;
 
     private int tPtr = 256;
     private int freq[] = new int[256];
-    private int weight[] = new int[2*256];
-    private int tree[] = new int[2*256];
+    private int weight[] = new int[3*256];
+    private int tree[] = new int[3*256];
     private long codes[] = new long[256];
     private int codeLen[] = new int[256];
-    private int unique = 0;
+    private int UNQ = 0;
     private int minCodeLen = 10000;
     private int maxCodeLen = 0;
 
     private int inSize = 0; // length of the input byte array
-
-    private boolean isAscii = false;
 
     private byte encodedBuf[] = new byte[32];
     private int encodedSize = 0; // length of the out buffer
@@ -155,7 +143,7 @@ public class Huffman {
         if ((a&0b00000100)!=0) return 3;
         if ((a&0b00000010)!=0) return 2;
         if ((a&0b00000001)!=0) return 1;
-        return -1;
+        return 0;
     }
 
     private String charForDisplay(char ch) {
@@ -199,7 +187,7 @@ public class Huffman {
                     codes[i] = code;
                     code++;
                     done++;
-                    if (done== unique) {
+                    if (done== UNQ) {
                         break outer;
                     }
                 }
@@ -209,37 +197,22 @@ public class Huffman {
         }
     }
 
-    private void countFrequency(byte a[]) {
+    private void countFrequency(byte a[], int inLen) {
         Arrays.fill(freq, 0);
-        for (int i=0; i<a.length; i++) {
+        for (int i=0; i<inLen; i++) {
             freq[a[i] & 0xff]++;
         }
-        isAscii=true;
-        for (int i=0; i<9; i++) {
-            isAscii = isAscii && freq[i]==0;
-        }
-        isAscii = isAscii && freq[0xb]==0 && freq[0xc]==0;
-        if (isAscii) {
-            for (int i = 0xe; i < 0x20; i++) {
-                isAscii = isAscii && freq[i] == 0;
-            }
-        }
-        if (isAscii) {
-            for (int i = 0x7f; i < 0x100; i++) {
-                isAscii = isAscii && freq[i] == 0;
+        UNQ=0;
+        for (int i=0; i<256; i++) {
+            weight[i] = freq[i];
+            if (freq[i]>0) {
+                UNQ++;
             }
         }
     }
 
     private void buildTree() {
-        unique = 0;
-        for (int i=0; i<256; i++) {
-            weight[i] = freq[i];
-            if (freq[i]>0) {
-                unique++;
-            }
-        }
-        if (unique==1) {
+        if (UNQ<2) {
             return;
         }
         while (true) {
@@ -286,8 +259,8 @@ public class Huffman {
         }
     }
 
-    private void compressInput(byte a[]) {
-        for (int i=0; i<a.length; i++) {
+    private void compressInput(byte a[], int inLen) {
+        for (int i=0; i<inLen; i++) {
             writeBits(codes[a[i]&0xff], codeLen[a[i]&0xff]);
         }
     }
@@ -343,43 +316,51 @@ public class Huffman {
         return T;
     }
 
-    public void encode(byte a[]) {
-        inSize = a.length;
-        if (a.length==0) {
-            encodedSize=0;
-            writeBits(0, 8);
-            writeBits(0, 8);
+    public void encode(byte a[], int inLen) throws CompressionException {
+        encodedSize=0;
+        if (a==null && inLen>0) {
+            throw new CompressionException("a[]==null and inLen>0");
+        }
+        if (a==null) {
             return;
         }
-        countFrequency(a);
-        getTableLength();
-        if (a.length==1) {
+        if (a.length<inLen) {
+            throw new CompressionException("a[].length < inLen");
+        }
+        if (inLen==0) {
+            return;
+        }
+        inSize = inLen;
+        countFrequency(a, inLen);
+        if (UNQ==1) {
             encodedSize=0;
-            writeBits(3, 8);
-            writeSize(a.length);
-            //writeBits();
+            writeBits(MODE_UNQ_EQ_1, 8);
+            writeSize(inLen);
+            for (int n=0; n<0x100; n++) {
+                if (freq[n]>0) {
+                    writeBits(n, 8);
+                    break;
+                }
+            }
+            return;
         }
         buildTree();
         calcCodeLengths(tree, tPtr -2, 1);
         assignCanonicalCodes();
-        listCodes();
+        //listCodes();
 
-        int predict[] = new int[4];
+        int predict[] = new int[PREDICT_SIZE];
         int maxCodeBitLen = bits(maxCodeLen-1);
 
         predict[PREDICT_UNCOMPRESSED] = 8 * inSize;
-        predict[PREDICT_FULL_TABLE] = 8 + maxCodeBitLen * 256;
-        predict[PREDICT_ASCII_TABLE] = 8 + maxCodeBitLen * (isAscii ? 98 : 999);
         int partialTableLength = getTableLength();
-        predict[PREDICT_PARTIAL_TABLE] = 8 + 8 + 8 * partialTableLength + maxCodeBitLen * unique;
+        predict[PREDICT_PARTIAL_TABLE] = 8 /*UNQ*/ + 8 * partialTableLength + 8 /*codeMaxLen*/ + 3 /*codeMinLen*/ + maxCodeBitLen * UNQ;
         int encodedDataBits = 0;
         for (int i=0; i<256; i++) {
             if (freq[i]!=0) {
                 encodedDataBits += freq[i] * codeLen[i];
             }
         }
-        predict[PREDICT_FULL_TABLE] += encodedDataBits;
-        predict[PREDICT_ASCII_TABLE] += encodedDataBits;
         predict[PREDICT_PARTIAL_TABLE] += encodedDataBits;
 
         int predictMin = 0;
@@ -390,62 +371,40 @@ public class Huffman {
         }
 
         if (predictMin==PREDICT_UNCOMPRESSED) {
-            encodedSize =0;
-            writeBits(PREDICT_UNCOMPRESSED, 8);
+            writeBits(MODE_UNCOMPRESSED, 8);
             writeSize(inSize);
             for (int i=0; i<inSize; i++) {
                 writeBits(a[i] & 0xff, 8);
             }
         }
-        else if (predictMin==PREDICT_ASCII_TABLE) {
-            encodedSize =0;
-            writeBits(PREDICT_ASCII_TABLE, 8);
-            writeSize(inSize);
-            writeBits(maxCodeLen-1, 8);
-            int nrOfBits = bits(maxCodeLen-1);
-            writeBits(codeLen[0x9]-1, nrOfBits);
-            writeBits(codeLen[0xa]-1, nrOfBits);
-            writeBits(codeLen[0xd]-1, nrOfBits);
-            for (int i=0x20; i<0x80; i++) {
-                writeBits(codeLen[i]-1, nrOfBits);
-            }
-            compressInput(a);
-        }
-        else if (predictMin==PREDICT_FULL_TABLE) {
-            encodedSize =0;
-            writeBits(PREDICT_FULL_TABLE, 8);
-            writeSize(inSize);
-            writeBits(maxCodeLen-1, 8);
-            int nrOfBits = bits(maxCodeLen-1);
-            for (int i=0; i<0x100; i++) {
-                writeBits(codeLen[i]-1, nrOfBits);
-            }
-            compressInput(a);
-        }
         else if (predictMin==PREDICT_PARTIAL_TABLE) {
-            encodedSize =0;
-            writeBits(PREDICT_PARTIAL_TABLE, 8);
+            writeBits(MODE_COMPRESSED, 8);
+            writeBits(UNQ-1, 8);
             writeSize(inSize);
-            writeBits(maxCodeLen-1, 8);
-            int nrOfBits = bits(maxCodeLen-1);
-            byte T[] = getTable(partialTableLength);
-            for (int i=0; i<partialTableLength; i++) {
-                writeBits(T[i], 8);
-            }
-            for (int i=0; i<0x100; i++) {
-                if (freq[i]>0) {
-                    writeBits(codeLen[i]-1, nrOfBits);
+            if (UNQ!=256) {
+                byte T[] = getTable(partialTableLength);
+                for (int i = 0; i < partialTableLength; i++) {
+                    writeBits(T[i], 8);
                 }
             }
-            compressInput(a);
+            writeBits(maxCodeLen-1, 8);
+            writeBits(minCodeLen-1, 3);
+            int nrOfBits = bits(maxCodeLen-minCodeLen);
+            if (nrOfBits!=0) {
+                for (int i = 0; i < 0x100; i++) {
+                    if (freq[i] > 0) {
+                        writeBits(codeLen[i] - minCodeLen, nrOfBits);
+                    }
+                }
+            }
+            compressInput(a, inLen);
         }
-        System.out.println("Insize: "+inSize);
-        System.out.println("# of unique byte values: "+ unique);
-        System.out.println("Outsize: "+ encodedSize +" ("+((float) encodedSize /inSize)+")");
-        System.out.println("Minimal code length: "+ minCodeLen);
-        System.out.println("Maximal code length: "+ maxCodeLen);
-        System.out.println("Bits needed for code length: "+bits(maxCodeLen - minCodeLen));
-        System.out.println("IsAscii: "+isAscii);
+//        System.out.println("Insize: "+inSize);
+//        System.out.println("# of unique byte values: "+ UNQ);
+//        System.out.println("Outsize: "+ encodedSize +" ("+((float) encodedSize /inSize)+")");
+//        System.out.println("Minimal code length: "+ minCodeLen);
+//        System.out.println("Maximal code length: "+ maxCodeLen);
+//        System.out.println("Bits needed for code length: "+bits(maxCodeLen - minCodeLen));
     }
 
     public void decode() throws CompressionException {
@@ -455,38 +414,87 @@ public class Huffman {
         if (version!=0) {
             throw new CompressionException("Huffman: unknown version " + version);
         }
-        int type = (int)(tmp & 0b111);
-        long size = readSize();
-        if (size>decodedBuf.length) {
-            decodedBuf =new byte[(int)size];
-        }
-        if (type==PREDICT_UNCOMPRESSED) {
+        int mode = (int)(tmp & 0b1111);
+        if (mode==MODE_UNCOMPRESSED) {
+            long size = readSize();
+            decodedSize=(int)size;
+            if (size>decodedBuf.length) {
+                decodedBuf =new byte[(int)size];
+            }
             for (int i=0; i<size; i++) {
                 decodedBuf[i] = (byte)readBits(8);
             }
+            return;
         }
-        else if (type==PREDICT_ASCII_TABLE){
-            maxCodeLen = (int)readBits(8)+1;
-            int nrOfBits = bits(maxCodeLen-1);
-            minCodeLen = Integer.MAX_VALUE;
-            Arrays.fill(codeLen, 0);
-            codeLen[0x9] = (int)readBits(nrOfBits);
-            if (codeLen[0x9]<minCodeLen) minCodeLen = codeLen[0x9];
-            codeLen[0xA] = (int)readBits(nrOfBits);
-            if (codeLen[0xA]<minCodeLen) minCodeLen = codeLen[0xA];
-            codeLen[0xD] = (int)readBits(nrOfBits);
-            if (codeLen[0xD]<minCodeLen) minCodeLen = codeLen[0xD];
-            for (int n=0x20; n<0x7F; n++) {
-                codeLen[n]=(int)readBits(nrOfBits);
-                if (codeLen[n]<minCodeLen) minCodeLen = codeLen[n];
+        else if (mode==MODE_UNQ_EQ_1) {
+            long size = readSize();
+            decodedSize=(int)size;
+            if (size>decodedBuf.length) {
+                decodedBuf =new byte[(int)size];
+            }
+            byte ch = (byte)readBits(8);
+            for (int i=0; i<size; i++) {
+                decodedBuf[i] = ch;
+            }
+            return;
+        }
+        else {
+            UNQ = (int)readBits(8) + 1;
+            long size = readSize();
+            decodedSize=(int)size;
+            if (size>decodedBuf.length) {
+                decodedBuf =new byte[(int)size];
+            }
+            if (UNQ==256) {
+                maxCodeLen = (int) readBits(8) + 1;
+                minCodeLen = (int) readBits(3) + 1;
+                int nrOfBits = bits(maxCodeLen - minCodeLen);
+                Arrays.fill(codeLen, 0);
+                for (int n = 0; n < 256; n++) {
+                    codeLen[n] = minCodeLen;
+                    if (nrOfBits!=0) {
+                        codeLen[n] += (int) readBits(nrOfBits);
+                    }
+                }
+            }
+            else {
+                Arrays.fill(freq, 0);
+                int c = 0;
+                int a = (int) readBits(8);
+                while (c < UNQ) {
+                    int b = (int) readBits(8);
+                    if (a < b) {
+                        for (int i = a; i <= b; i++) {
+                            freq[i]++;
+                            c++;
+                        }
+                    } else {
+                        freq[a]++;
+                        c++;
+                    }
+                    a = b;
+                }
+                maxCodeLen = (int) readBits(8) + 1;
+                minCodeLen = (int) readBits(3) + 1;
+                int nrOfBits = bits(maxCodeLen - minCodeLen);
+                Arrays.fill(codeLen, 0);
+                for (int n = 0; n < 0x100; n++) {
+                    if (freq[n] != 0) {
+                        codeLen[n] = minCodeLen;
+                        if (nrOfBits!=0) {
+                            codeLen[n] += (int)readBits(nrOfBits);
+                        }
+                    }
+                }
             }
             assignCanonicalCodes();
+            //listCodes();
             for (int i=0; i<size; i++) {
                 long code = readBits(minCodeLen);
                 int cl = minCodeLen;
                 outer:
                 while (true) {
-                    for (int n = 0; n < 256; n++) {
+                    for (int n = 0; n < 0x100; n++) {
                         if (codes[n] == code && codeLen[n] == cl) {
                             decodedBuf[i] = (byte) n;
                             break outer;
@@ -497,33 +505,6 @@ public class Huffman {
                     cl++;
                 }
             }
-            decodedSize=(int)size;
         }
-    }
-
-    public static void main(String[] args) throws Throwable {
-        File f = new File("c:/data/temp/068794215.xml");
-        FileInputStream fis = new FileInputStream(f);
-        byte buf[] = new byte[(int)f.length()];
-        fis.read(buf);
-
-        //buf = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>".getBytes();
-
-        Huffman h = new Huffman();
-        h.encode(buf);
-        h.decode();
-        if (buf.length!=h.decodedBuf.length) {
-            System.err.println("uncompressed and compressed lengths are different!");
-            System.exit(1);
-        }
-        else {
-            for (int i=0; i<buf.length; i++) {
-                if (buf[i]!=h.decodedBuf[i]) {
-                    System.err.println("content changed!");
-                    System.exit(1);
-                }
-            }
-        }
-        System.out.println(new String(Arrays.copyOf(h.decodedBuf, h.decodedSize), "UTF-8"));
     }
 }
