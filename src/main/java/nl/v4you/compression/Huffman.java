@@ -48,20 +48,21 @@ public class Huffman {
     private int decodedSize;
 
     private void writeBits(long b, int L) {
-        int m = 1<<(L-1);
-        while (m!=0) {
+        int bMask = 1<<(L-1);
+        while (bMask!=0) {
             if (encodedMask == 0) {
                 encodedMask = 0x80;
                 encodedSize++;
                 if (encodedSize > encodedBuf.length) {
                     encodedBuf = Arrays.copyOf(encodedBuf, 2 * encodedBuf.length);
                 }
+                encodedBuf[encodedSize - 1] = 0;
             }
-            if ((b & m) != 0) {
+            if ((b & bMask) != 0) {
                 encodedBuf[encodedSize - 1] |= encodedMask;
             }
             encodedMask >>>= 1;
-            m >>>= 1;
+            bMask >>>= 1;
         }
     }
 

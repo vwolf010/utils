@@ -96,12 +96,12 @@ public class HuffmanTest {
             }
             byte uncompressedBuf[] = ts.getBytes("UTF-8");
             h.encode(uncompressedBuf, uncompressedBuf.length);
-//            h.decode();
-//            byte decodedBuf[] = h.getDecodedBuf();
-//            assertEquals(uncompressedBuf.length, h.getDecodedSize());
-//            for (int i=0; i<h.getDecodedSize(); i++) {
-//                assertEquals(uncompressedBuf[i], decodedBuf[i]);
-//            }
+            h.decode();
+            byte decodedBuf[] = h.getDecodedBuf();
+            assertEquals(uncompressedBuf.length, h.getDecodedSize());
+            for (int i=0; i<h.getDecodedSize(); i++) {
+                assertEquals(uncompressedBuf[i], decodedBuf[i]);
+            }
         }
     }
 
@@ -119,12 +119,23 @@ public class HuffmanTest {
         Huffman huff = new Huffman();
         huff.encode(buf, buf.length);
         System.out.println("huffman       : "+huff.getEncodedSize());
-
         huff.decode();
         assertEquals(buf.length, huff.getDecodedSize());
+        byte decodedBuf[] = huff.getDecodedBuf();
+        assertEquals(buf.length, huff.getDecodedSize());
+        for (int i=0; i<huff.getDecodedSize(); i++) {
+            assertEquals(buf[i], decodedBuf[i]);
+        }
 
         byte buf2[] = lzv.compress(buf);
         huff.encode(buf2, buf2.length);
         System.out.println("lzv + huffman : "+huff.getEncodedSize());
+        huff.decode();
+        decodedBuf = huff.getDecodedBuf();
+        byte out[] = lzv.decompress(decodedBuf);
+        assertEquals(buf.length, out.length);
+        for (int i=0; i<out.length; i++) {
+            assertEquals(buf[i], out[i]);
+        }
     }
 }
