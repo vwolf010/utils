@@ -28,10 +28,10 @@ public class Huffman {
     private static int MODE_UNQ_EQ_1 = 1;
     private static int MODE_COMPRESSED = 2;
 
-    private int tPtr = 256;
+    private int tPtr;
     private int freq[] = new int[256];
-    private int weight[] = new int[3*256];
-    private int tree[] = new int[3*256];
+    private int weight[] = new int[10*256];
+    private int tree[] = new int[10*256];
     private long codes[] = new long[256];
     private int codeLen[] = new int[256];
     private int UNQ = 0;
@@ -63,11 +63,6 @@ public class Huffman {
             encodedMask >>>= 1;
             m >>>= 1;
         }
-    }
-
-    private void reset() {
-        encodedSize=0;
-        encodedMask=0;
     }
 
     private void writeSize(long L) {
@@ -199,13 +194,14 @@ public class Huffman {
 
     private void countFrequency(byte a[], int inLen) {
         Arrays.fill(freq, 0);
+        Arrays.fill(weight, 0);
         for (int i=0; i<inLen; i++) {
             freq[a[i] & 0xff]++;
         }
         UNQ=0;
         for (int i=0; i<256; i++) {
-            weight[i] = freq[i];
             if (freq[i]>0) {
+                weight[i] = freq[i];
                 UNQ++;
             }
         }
@@ -215,6 +211,7 @@ public class Huffman {
         if (UNQ<2) {
             return;
         }
+        tPtr = 256;
         while (true) {
             int from = -1;
             int b;
@@ -269,6 +266,10 @@ public class Huffman {
         return encodedSize;
     }
 
+    public byte[] getEncodedBuf() {
+        return encodedBuf;
+    }
+
     public int getDecodedSize() {
         return decodedSize;
     }
@@ -277,7 +278,7 @@ public class Huffman {
         return decodedBuf;
     }
 
-    public int getTableLength() {
+    private int getTableLength() {
         int L = 0;
         int i=255;
         for (; i>=0 && freq[i] == 0; i--);
@@ -296,7 +297,7 @@ public class Huffman {
         return L;
     }
 
-    public byte[] getTable(int L) {
+    private byte[] getTable(int L) {
         byte T[] = new byte[L];
         int idx=0;
         int i=255;
@@ -317,7 +318,10 @@ public class Huffman {
     }
 
     public void encode(byte a[], int inLen) throws CompressionException {
-        encodedSize=0;
+        encodedSize = 0;
+        encodedMask = 0;
+        minCodeLen = 10000;
+        maxCodeLen = 0;
         if (a==null && inLen>0) {
             throw new CompressionException("a[]==null and inLen>0");
         }
@@ -408,7 +412,8 @@ public class Huffman {
     }
 
     public void decode() throws CompressionException {
-        reset();
+        encodedSize = 0;
+        encodedMask = 0;
         long tmp = readBits(8);
         int version = (int)(tmp & 0b11111000);
         if (version!=0) {
@@ -461,18 +466,23 @@ public class Huffman {
                 Arrays.fill(freq, 0);
                 int c = 0;
                 int a = (int) readBits(8);
-                while (c < UNQ) {
+                while (true) {
                     int b = (int) readBits(8);
                     if (a < b) {
-                        for (int i = a; i <= b; i++) {
+                        for (int i = a; i < b; i++) {
                             freq[i]++;
                             c++;
                         }
-                    } else {
+                    }
+                    else {
                         freq[a]++;
                         c++;
                     }
                     a = b;
+                    if (c+1==UNQ) {
+                        freq[a]++;
+                        break;
+                    }
                 }
                 maxCodeLen = (int) readBits(8) + 1;
                 minCodeLen = (int) readBits(3) + 1;

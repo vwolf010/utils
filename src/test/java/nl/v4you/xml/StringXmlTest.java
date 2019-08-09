@@ -1,5 +1,6 @@
 package nl.v4you.xml;
 
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -57,6 +58,7 @@ public class StringXmlTest {
         assertEquals("<n1 a1=\"&amp;&lt;&gt;&apos;&quot;\"/>", s.toString());
     }
 
+    @Ignore
     @Test
     public void testEscapeSurrogatePair() throws StringXmlException {
         StringXml s = new StringXml();
