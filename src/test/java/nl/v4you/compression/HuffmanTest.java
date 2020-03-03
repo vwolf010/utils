@@ -1,5 +1,6 @@
 package nl.v4you.compression;
 
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -105,6 +106,7 @@ public class HuffmanTest {
         }
     }
 
+    @Ignore
     @Test
     public void testX() throws Throwable {
         File f = new File("c:/data/temp/402119347.xml");
