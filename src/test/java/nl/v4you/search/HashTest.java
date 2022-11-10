@@ -16,6 +16,7 @@ public class HashTest extends TestCase {
 
         a.set("abcd".getBytes());
         b.set("abcd".getBytes());
+        b.hashCode();
         assertEquals(0, a.compareTo(b));
 
         a.set("aaa".getBytes());
@@ -27,5 +28,10 @@ public class HashTest extends TestCase {
         b.set("aaaa".getBytes());
         assertEquals(-1, a.compareTo(b));
         assertEquals(1, b.compareTo(a));
+
+        a.set("abcd".getBytes());
+        b.set("abcd".getBytes());
+        b.hashCode();
+        assertTrue(a.equals(b));
     }
 }

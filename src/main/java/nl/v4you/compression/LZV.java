@@ -239,7 +239,7 @@ public class LZV {
         LZV lzv = new LZV();
 
         //File f = new File("c:/data/ggc/801042437.xml");
-        File f = new File("c:/data/ggc/clustering.log");
+        File f = new File("c:/tmp/findPpn/418842132.xml");
         FileInputStream fis = new FileInputStream(f);
         byte b[] = new byte[(int)f.length()];
         fis.read(b);

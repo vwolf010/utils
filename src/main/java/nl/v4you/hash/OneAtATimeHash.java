@@ -6,25 +6,38 @@ public class OneAtATimeHash implements Comparable<OneAtATimeHash> {
     private byte b[];
     private int hash; // defaults to 0
 
+    private OneAtATimeHash(byte b[], int hash) {
+        this.b = b;
+        this.hash = hash;
+    }
+
     public OneAtATimeHash(byte b[]) {
         this.b = b;
+        hash = 0;
+        hashCode();
     }
 
     public OneAtATimeHash set(byte b[]) {
         this.b = b;
-        hash=0;
+        hash = 0;
+        hashCode();
         return this;
     }
 
     @Override
     public boolean equals(Object o) {
-        if (o == this) return true;
+        if (o == this) {
+            return true;
+        }
+        if (((OneAtATimeHash)o).hash != this.hash) {
+            return false;
+        }
         return Arrays.equals(b, ((OneAtATimeHash) o).b);
     }
 
     @Override
     public int hashCode() {
-        if (hash==0 && b.length>0) {
+        if (hash==0) {
             hash = calcHash(b);
         }
         return hash;
@@ -56,10 +69,12 @@ public class OneAtATimeHash implements Comparable<OneAtATimeHash> {
     public static int calcHash(byte key[]) {
         int hash = 0;
 
-        for (byte b : key) {
-            hash += (b & 0xff);
-            hash += (hash << 10);
-            hash ^= (hash >>> 6);
+        if (key!=null) {
+            for (byte b : key) {
+                hash += (b & 0xff);
+                hash += (hash << 10);
+                hash ^= (hash >>> 6);
+            }
         }
 
         hash += (hash << 3);
@@ -69,8 +84,7 @@ public class OneAtATimeHash implements Comparable<OneAtATimeHash> {
     }
 
     public OneAtATimeHash clone() {
-        OneAtATimeHash o = new OneAtATimeHash(Arrays.copyOf(b, b.length));
-        o.hash = hash;
+        OneAtATimeHash o = new OneAtATimeHash(Arrays.copyOf(b, b.length), hash);
         return o;
     }
 }
